@@ -562,4 +562,4 @@ MIT — see [LICENSE](LICENSE)
 
 ## Author
 
-Built by [Joseph Njoroge](https://github.com/kimenyu) — [njorogekimenyu.vercel.app](https://njorogekimenyu.vercel.app)
+Built by [Joseph Njoroge](https://github.com/kimenyu) — [njorogekimenyu.online](https://njorogekimenyu.online/)
