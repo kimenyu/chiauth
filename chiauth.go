@@ -32,9 +32,11 @@ package chiauth
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	httpswagger "github.com/swaggo/http-swagger"
 
 	"github.com/kimenyu/chiauth/config"
@@ -48,9 +50,7 @@ import (
 // Config is re-exported from the config package for ergonomic top-level access.
 type Config = config.Config
 
-// ─────────────────────────────────────────────
 // INSTANCE
-// ─────────────────────────────────────────────
 
 // ChiAuth is a fully wired chiauth instance.
 // Mount its Router into your Chi app and use its Middleware methods
@@ -128,9 +128,7 @@ func (ca *ChiAuth) Router() http.Handler {
 	return ca.router
 }
 
-// ─────────────────────────────────────────────
 // MIDDLEWARE ACCESSORS
-// ─────────────────────────────────────────────
 
 // Authenticate returns Chi middleware that validates the Bearer JWT and
 // injects the resolved *models.User into the request context.
@@ -147,9 +145,13 @@ func (ca *ChiAuth) Authenticate() func(http.Handler) http.Handler {
 
 // AuthenticateMiddleware returns the authenticate middleware bound to the live user store.
 func (ca *ChiAuth) AuthenticateMiddleware() func(http.Handler) http.Handler {
-	return chiauthmiddleware.AuthenticateFull(ca.tokenSvc, func(ctx context.Context, id interface{}) (*models.User, error) {
-		return ca.store.GetByID(ctx, id)
-	})
+    return chiauthmiddleware.AuthenticateFull(ca.tokenSvc, func(ctx context.Context, id interface{}) (*models.User, error) {
+        uid, ok := id.(uuid.UUID)
+        if !ok {
+            return nil, fmt.Errorf("invalid user id type: %T", id)
+        }
+        return ca.store.GetByID(ctx, uid)
+    })
 }
 
 // RequireRole returns middleware that gates on a role slug.
@@ -183,9 +185,7 @@ func (ca *ChiAuth) RequireSuperuser() func(http.Handler) http.Handler {
 	return chiauthmiddleware.RequireSuperuser
 }
 
-// ─────────────────────────────────────────────
 // SEEDING HELPERS
-// ─────────────────────────────────────────────
 
 // SeedPermissions upserts a list of permissions into the database.
 // Call this once on application startup. Idempotent.
@@ -225,18 +225,20 @@ func (ca *ChiAuth) RunMigrations() error {
 	return runMigrations(ca.cfg.DB)
 }
 
-// ─────────────────────────────────────────────
 // ROUTER CONSTRUCTION
-// ─────────────────────────────────────────────
 
 func (ca *ChiAuth) buildRouter(h *handlers.Handler, mw *chiauthmiddleware.AuthMiddleware, tokenSvc *services.TokenService, store *postgres.Store) chi.Router {
 	r := chi.NewRouter()
 
 	authenticate := chiauthmiddleware.AuthenticateFull(tokenSvc, func(ctx context.Context, id interface{}) (*models.User, error) {
-		return store.GetByID(ctx, id)
+		uid, ok := id.(uuid.UUID)
+		if !ok {
+			return nil, fmt.Errorf("invalid user id type: %T", id)
+		}
+		return store.GetByID(ctx, uid)
 	})
 
-	// ── Public endpoints ──────────────────────────────────────────────
+	//  Public endpoints 
 	r.Post("/register", h.Register)
 	r.Post("/activate", h.Activate)
 	r.Post("/activate/resend", h.ResendVerification)
@@ -245,7 +247,7 @@ func (ca *ChiAuth) buildRouter(h *handlers.Handler, mw *chiauthmiddleware.AuthMi
 	r.Post("/password/forgot", h.ForgotPassword)
 	r.Post("/password/reset/confirm", h.ResetPassword)
 
-	// ── Authenticated endpoints ────────────────────────────────────────
+	//  Authenticated endpoints 
 	r.Group(func(r chi.Router) {
 		r.Use(authenticate)
 
@@ -259,7 +261,7 @@ func (ca *ChiAuth) buildRouter(h *handlers.Handler, mw *chiauthmiddleware.AuthMi
 		r.Post("/password/change", h.ChangePassword)
 	})
 
-	// ── Admin endpoints (staff or superuser) ──────────────────────────
+	// Admin endpoints (staff or superuser) 
 	r.Group(func(r chi.Router) {
 		r.Use(authenticate)
 		r.Use(chiauthmiddleware.RequireStaff)
@@ -280,7 +282,7 @@ func (ca *ChiAuth) buildRouter(h *handlers.Handler, mw *chiauthmiddleware.AuthMi
 		r.Get("/admin/permissions", h.AdminListPermissions)
 	})
 
-	// ── Swagger UI ─────────────────────────────────────────────────────
+	//  Swagger UI 
 	r.Get("/docs/*", httpswagger.Handler(
 		httpswagger.URL("/auth/docs/doc.json"),
 	))
