@@ -32,8 +32,8 @@ func (s *Store) Create(ctx context.Context, user *models.User) error {
     user.CreatedAt = time.Now()
     user.UpdatedAt = time.Now()
 
-    // Store empty username as NULL to avoid violating the unique constraint.
-    // Multiple users can register without a username; NULL != NULL in Postgres.
+    // store empty username as NULL to avoid violating the unique constraint
+    // multiple users can register without a username; NULL != NULL in Postgres
     var username *string
     if user.Username != "" {
         username = &user.Username
