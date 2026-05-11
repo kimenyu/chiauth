@@ -1,5 +1,9 @@
 # chiauth
 
+[![Go Reference](https://pkg.go.dev/badge/github.com/kimenyu/chiauth.svg)](https://pkg.go.dev/github.com/kimenyu/chiauth)
+[![Go Report Card](https://goreportcard.com/badge/github.com/kimenyu/chiauth)](https://goreportcard.com/report/github.com/kimenyu/chiauth)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 A complete, mountable authentication and authorization package for Go applications using the [Chi](https://github.com/go-chi/chi) router.
 
 Inspired by [Djoser](https://djoser.readthedocs.io/) for Django REST Framework — drop it into any Chi app and get a full auth system with one function call.
@@ -125,9 +129,9 @@ chiauth.Config{
     RotateRefreshTokens: true,   // recommended — leave true
     AllowHardDelete:     false,  // true = permanent deletion
 
-    // Email (optional)
-    EmailSender:       mySender,       // email.Sender interface — see Email section
-    EmailTemplatesDir: "./my-emails",  // optional custom templates directory
+    // Email (optional — see Email Setup section)
+    EmailSender:       mySender,           // email.Sender interface
+    EmailTemplatesDir: "./my-emails",      // optional custom templates directory
     BaseURL:           "https://api.myapp.com",
     AppName:           "My App",
     SupportEmail:      "support@myapp.com",
@@ -315,11 +319,14 @@ chiauth.Config{
 }
 ```
 
-### Production (SMTP via gomail)
+### Production (SMTP)
 
-Add `gopkg.in/gomail.v2` to your `go.mod`, then use the built-in `SMTPSender`:
+`SMTPSender` handles template rendering but requires you to wire in your own SMTP transport using [`gopkg.in/gomail.v2`](https://pkg.go.dev/gopkg.in/gomail.v2). Add gomail to your app's `go.mod`, then uncomment the implementation in `email/email.go`:
 
 ```go
+// In your app's go.mod:
+// require gopkg.in/gomail.v2 v2.0.0-...
+
 import "github.com/kimenyu/chiauth/email"
 
 sender, err := email.NewSMTPSender(email.SMTPConfig{
@@ -330,15 +337,20 @@ sender, err := email.NewSMTPSender(email.SMTPConfig{
     FromAddress: "noreply@myapp.com",
     FromName:    "My App",
 })
+if err != nil {
+    log.Fatal(err)
+}
 
 chiauth.Config{
     EmailSender: sender,
 }
 ```
 
+> **Note:** The `sendEmail` method in `SMTPSender` has commented-out gomail code by design so the package compiles without requiring gomail as a dependency. Uncomment `email/email.go`'s `sendEmail` body after adding gomail to your own `go.mod`.
+
 ### Custom email provider (Resend, SendGrid, etc.)
 
-Implement the `email.Sender` interface:
+Implement the `email.Sender` interface — this is the recommended approach for production:
 
 ```go
 type Sender interface {
@@ -358,17 +370,17 @@ func (s *ResendSender) SendVerification(to string, data email.VerificationData) 
         From:    "noreply@myapp.com",
         To:      []string{to},
         Subject: "Verify your email",
-        Html:    buildHTML(data), // your own template rendering
+        Html:    buildHTML(data),
     })
     return err
 }
+
+// implement SendPasswordReset and SendLoginAlert similarly
 ```
 
 ### Custom email templates
 
-**Option 1 — Directory override** (recommended for most cases):
-
-Create HTML files with the same names as the defaults:
+**Option 1 — Directory override** (recommended):
 
 ```
 my-templates/
@@ -416,7 +428,7 @@ chiauth.Config{
 Full auth flow without a frontend:
 
 ### 1. Register
-```
+```json
 POST /auth/register
 {
     "email": "joe@example.com",
@@ -429,7 +441,7 @@ POST /auth/register
 Check your terminal for the verification token.
 
 ### 2. Activate
-```
+```json
 POST /auth/activate
 {
     "token": "<token from terminal>"
@@ -439,7 +451,7 @@ POST /auth/activate
 Or skip entirely by setting `RequireEmailVerify: false`.
 
 ### 3. Login
-```
+```json
 POST /auth/login
 {
     "email": "joe@example.com",
@@ -454,7 +466,7 @@ Response:
     "refresh_token": "abc123...",
     "token_type": "Bearer",
     "expires_at": "2026-05-10T16:00:00Z",
-    "user": { ... }
+    "user": { "..." }
 }
 ```
 
@@ -463,7 +475,7 @@ Response:
 Set header: `Authorization: Bearer eyJ...`
 
 ### 5. Refresh when expired
-```
+```json
 POST /auth/token/refresh
 {
     "refresh_token": "abc123..."
@@ -478,6 +490,7 @@ The Swagger UI is mounted at `/auth/docs`. Generate the spec with:
 
 ```bash
 go install github.com/swaggo/swag/cmd/swag@latest
+export PATH=$PATH:$(go env GOPATH)/bin
 swag init -g docs/swagger.go -o docs
 ```
 
@@ -520,22 +533,18 @@ React to auth events without patching the package:
 ```go
 chiauth.Config{
     OnUserCreated: func(u *models.User) {
-        // Sync to Mailchimp, HubSpot, etc.
         crm.CreateContact(u.Email, u.FirstName)
     },
 
     OnLogin: func(u *models.User, ip string) {
-        // Send login alert email, log to analytics
         analytics.Track("login", u.ID.String(), ip)
     },
 
     OnPasswordReset: func(u *models.User) {
-        // Notify security team of password changes
         slack.Notify(fmt.Sprintf("Password reset: %s", u.Email))
     },
 
     OnAccountLocked: func(u *models.User) {
-        // Alert the user via SMS
         sms.Send(u.PhoneNumber, "Your account has been locked. Contact support.")
     },
 }
@@ -551,6 +560,20 @@ chiauth.Config{
 - Refresh token rotation is on by default — reuse of a revoked token triggers full session invalidation
 - `forgot password` always returns 200 regardless of whether the email exists (prevents enumeration)
 - All tables are prefixed `chiauth_` — no conflicts with your schema
+
+---
+
+## Contributing
+
+Contributions are welcome. Please open an issue before submitting a PR for large changes.
+
+```bash
+git clone https://github.com/kimenyu/chiauth
+cd chiauth
+go test ./models/... ./services/... -v
+```
+
+If you are adding a feature, add tests. If you are fixing a bug, add a test that reproduces it.
 
 ---
 
