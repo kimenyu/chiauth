@@ -27,24 +27,33 @@ func New(db *sqlx.DB) *Store {
  
 // USER STORE
  
-
 func (s *Store) Create(ctx context.Context, user *models.User) error {
-	user.ID = uuid.New()
-	user.CreatedAt = time.Now()
-	user.UpdatedAt = time.Now()
+    user.ID = uuid.New()
+    user.CreatedAt = time.Now()
+    user.UpdatedAt = time.Now()
 
-	query := `
-		INSERT INTO chiauth_users (
-			id, email, username, password_hash, first_name, last_name,
-			phone_number, avatar_url, is_active, is_staff, is_superuser,
-			is_locked, failed_login_attempts, created_at, updated_at
-		) VALUES (
-			:id, :email, :username, :password_hash, :first_name, :last_name,
-			:phone_number, :avatar_url, :is_active, :is_staff, :is_superuser,
-			:is_locked, :failed_login_attempts, :created_at, :updated_at
-		)`
-	_, err := s.db.NamedExecContext(ctx, query, user)
-	return err
+    // Store empty username as NULL to avoid violating the unique constraint.
+    // Multiple users can register without a username; NULL != NULL in Postgres.
+    var username *string
+    if user.Username != "" {
+        username = &user.Username
+    }
+
+    _, err := s.db.ExecContext(ctx, `
+        INSERT INTO chiauth_users (
+            id, email, username, password_hash, first_name, last_name,
+            phone_number, avatar_url, is_active, is_staff, is_superuser,
+            is_locked, failed_login_attempts, created_at, updated_at
+        ) VALUES (
+            $1, $2, $3, $4, $5, $6,
+            $7, $8, $9, $10, $11,
+            $12, $13, $14, $15
+        )`,
+        user.ID, user.Email, username, user.PasswordHash, user.FirstName, user.LastName,
+        user.PhoneNumber, user.AvatarURL, user.IsActive, user.IsStaff, user.IsSuperuser,
+        user.IsLocked, user.FailedLoginAttempts, user.CreatedAt, user.UpdatedAt,
+    )
+    return err
 }
 
 func (s *Store) GetByID(ctx context.Context, id uuid.UUID) (*models.User, error) {
