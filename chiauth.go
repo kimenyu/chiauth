@@ -211,9 +211,7 @@ func (ca *ChiAuth) SeedRoles(ctx context.Context, inputs []models.SeedRoleInput)
 	return ca.roleSvc.SeedRoles(ctx, inputs)
 }
 
-// ─────────────────────────────────────────────
 // MIGRATIONS
-// ─────────────────────────────────────────────
 
 // RunMigrations applies all chiauth SQL migrations to the database.
 // Call this once during app startup, before mounting the router.
